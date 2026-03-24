@@ -121,7 +121,8 @@ function buildNavSections(counts) {
 export default function Sidebar({ isOpen, onClose }) {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
-  const logoSrc = useTransparentLogo('/logo/brasswater-dark.png');
+  const logoFile = theme === 'dark' ? 'brasswater-light.png' : 'brasswater-dark.png';
+  const logoSrc = useTransparentLogo(`${import.meta.env.BASE_URL}logo/${logoFile}`);
   const counts = useNavCounts();
   const navSections = buildNavSections(counts);
 
@@ -146,7 +147,7 @@ export default function Sidebar({ isOpen, onClose }) {
         `}
       >
         {/* Logo area */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-white/5">
+        <div className="relative flex items-center justify-center px-6 py-5 border-b border-white/5">
           <img
             src={logoSrc}
             alt="BrassWater"
@@ -156,7 +157,7 @@ export default function Sidebar({ isOpen, onClose }) {
           {/* Close button – mobile only */}
           <button
             onClick={onClose}
-            className="ml-auto rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-white md:hidden"
+            className="absolute right-4 rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-white md:hidden"
           >
             <X size={18} />
           </button>

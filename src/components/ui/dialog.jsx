@@ -37,7 +37,7 @@ function Dialog({ open, onOpenChange, children }) {
   return createPortal(
     <>
       <DialogOverlay onClick={() => onOpenChange?.(false)} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => onOpenChange?.(false)}>
         <div
           className="relative w-full max-w-lg rounded-xl bg-white dark:bg-gray-900/90 dark:backdrop-blur-xl border border-gray-200/60 dark:border-white/10 shadow-2xl"
           style={{ animation: "dialogSlideUp 250ms ease-out" }}

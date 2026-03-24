@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect, createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Package,
@@ -22,7 +23,10 @@ import {
   ScanLine,
   Printer,
   Camera,
+  LocateFixed,
+  Loader2,
 } from 'lucide-react';
+import { useGeolocation } from '@/hooks/useGeolocation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -152,6 +156,9 @@ export default function Inventory() {
   const [checkoutForm, setCheckoutForm] = useState({ ...emptyCheckoutForm });
   const [checkinForm, setCheckinForm] = useState({ ...emptyCheckinForm });
 
+  // Geolocation
+  const geo = useGeolocation();
+
   // ---------------------------------------------------------------------------
   // Initial data load
   // ---------------------------------------------------------------------------
@@ -220,8 +227,8 @@ export default function Inventory() {
   // ---------------------------------------------------------------------------
 
   const openDetail = (item) => { setSelectedItem(item); setShowDetailDialog(true); };
-  const openCheckout = (item, e) => { if (e) e.stopPropagation(); setSelectedItem(item); setCheckoutForm({ ...emptyCheckoutForm }); setShowCheckoutDialog(true); };
-  const openCheckin = (item, e) => { if (e) e.stopPropagation(); setSelectedItem(item); setCheckinForm({ location: item.lastLocation || '', notes: '' }); setShowCheckinDialog(true); };
+  const openCheckout = (item, e) => { if (e) e.stopPropagation(); setSelectedItem(item); setCheckoutForm({ ...emptyCheckoutForm }); geo.clear(); geo.detect(); setShowCheckoutDialog(true); };
+  const openCheckin = (item, e) => { if (e) e.stopPropagation(); setSelectedItem(item); setCheckinForm({ location: item.lastLocation || '', notes: '' }); geo.clear(); geo.detect(); setShowCheckinDialog(true); };
 
   const handleCheckout = async () => {
     if (!checkoutForm.userId) {
@@ -241,6 +248,9 @@ export default function Inventory() {
           location: selectedItem.lastLocation || null,
           date: new Date().toISOString().split('T')[0],
           notes: checkoutForm.notes || null,
+          gpsLat: geo.location?.lat || null,
+          gpsLng: geo.location?.lng || null,
+          gpsAddress: geo.location?.address || null,
         }),
       ]);
       await loadData();
@@ -271,6 +281,9 @@ export default function Inventory() {
           location: checkinForm.location || selectedItem.lastLocation || null,
           date: new Date().toISOString().split('T')[0],
           notes: checkinForm.notes || null,
+          gpsLat: geo.location?.lat || null,
+          gpsLng: geo.location?.lng || null,
+          gpsAddress: geo.location?.address || null,
         }),
       ]);
       await loadData();
@@ -381,36 +394,35 @@ export default function Inventory() {
   }, [cameraActive, showScanDialog, handleScanLookup]);
 
   const printQrLabel = (item) => {
+    const qrSvg = renderToStaticMarkup(
+      createElement(QRCodeSVG, { value: buildQrValue(item), size: 200, level: 'M', includeMargin: false })
+    );
     const printWindow = window.open('', '_blank', 'width=400,height=500');
     if (!printWindow) return;
-    printWindow.document.write(`
-      <!DOCTYPE html><html><head><title>QR Label - ${item.assetTag}</title>
-      <style>
-        body { font-family: Arial, sans-serif; display: flex; flex-direction: column;
-               align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .label { text-align: center; padding: 24px; border: 2px dashed #ccc; border-radius: 12px; }
-        .tag { font-size: 20px; font-weight: bold; margin-top: 12px; font-family: monospace; }
-        .name { font-size: 14px; color: #555; margin-top: 6px; max-width: 250px; }
-        .company { font-size: 10px; color: #999; margin-top: 8px; }
-        svg { display: block; margin: 0 auto; }
-        @media print { .label { border: none; } }
-      </style></head><body>
-      <div class="label">
-        <div id="qr"></div>
-        <div class="tag">${item.assetTag}</div>
-        <div class="name">${item.name}</div>
-        <div class="company">BrassWater CMMS</div>
-      </div>
-      <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
-      <script>
-        QRCode.toCanvas(document.createElement('canvas'), '${buildQrValue(item)}',
-          { width: 200, margin: 1 }, function(err, canvas) {
-            if (!err) document.getElementById('qr').appendChild(canvas);
-            setTimeout(function() { window.print(); }, 400);
-          });
-      <\/script></body></html>
-    `);
-    printWindow.document.close();
+    const doc = printWindow.document;
+    doc.open();
+    doc.write([
+      '<!DOCTYPE html><html><head>',
+      '<title>QR Label - ', item.assetTag, '</title>',
+      '<style>',
+      'body{font-family:Arial,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0}',
+      '.label{text-align:center;padding:24px;border:2px dashed #ccc;border-radius:12px}',
+      '.tag{font-size:20px;font-weight:bold;margin-top:12px;font-family:monospace}',
+      '.name{font-size:14px;color:#555;margin-top:6px;max-width:250px}',
+      '.company{font-size:10px;color:#999;margin-top:8px}',
+      'svg{display:block;margin:0 auto}',
+      '@media print{.label{border:none}}',
+      '</style></head><body>',
+      '<div class="label">',
+      qrSvg,
+      '<div class="tag">', item.assetTag, '</div>',
+      '<div class="name">', item.name, '</div>',
+      '<div class="company">BrassWater CMMS</div>',
+      '</div>',
+      '<script>setTimeout(function(){window.print()},300)<\/script>',
+      '</body></html>',
+    ].join(''));
+    doc.close();
   };
 
   // Get the freshest version of selectedItem from items state
@@ -631,7 +643,7 @@ export default function Inventory() {
           {selectedItem && (
             <div className="space-y-4 py-4">
               <div className="rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 p-3">
-                <p className="font-medium">{selectedItem.name}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{selectedItem.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.assetTag}</p>
               </div>
               <div>
@@ -645,6 +657,25 @@ export default function Inventory() {
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </Select>
+              </div>
+              {/* GPS Location */}
+              <div>
+                <Label>Current Location</Label>
+                <div className="mt-1 flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 px-3 py-2.5">
+                  {geo.loading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin text-sky-500" /><span className="text-sm text-muted-foreground">Detecting location...</span></>
+                  ) : geo.location ? (
+                    <><LocateFixed className="h-4 w-4 text-green-500 shrink-0" /><span className="text-sm text-gray-900 dark:text-gray-100 truncate">{geo.location.address}</span></>
+                  ) : (
+                    <>
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm text-muted-foreground">{geo.error || 'Location not detected'}</span>
+                      <Button type="button" variant="ghost" size="sm" className="ml-auto shrink-0 gap-1 text-xs" onClick={() => geo.detect()}>
+                        <LocateFixed className="h-3.5 w-3.5" /> Detect
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
               <div>
                 <Label>Notes</Label>
@@ -677,7 +708,7 @@ export default function Inventory() {
           {selectedItem && (
             <div className="space-y-4 py-4">
               <div className="rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 p-3">
-                <p className="font-medium">{selectedItem.name}</p>
+                <p className="font-medium text-gray-900 dark:text-white">{selectedItem.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.assetTag}</p>
               </div>
               <div>
@@ -691,6 +722,25 @@ export default function Inventory() {
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </Select>
+              </div>
+              {/* GPS Location */}
+              <div>
+                <Label>Current GPS Location</Label>
+                <div className="mt-1 flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 px-3 py-2.5">
+                  {geo.loading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin text-sky-500" /><span className="text-sm text-muted-foreground">Detecting location...</span></>
+                  ) : geo.location ? (
+                    <><LocateFixed className="h-4 w-4 text-green-500 shrink-0" /><span className="text-sm text-gray-900 dark:text-gray-100 truncate">{geo.location.address}</span></>
+                  ) : (
+                    <>
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm text-muted-foreground">{geo.error || 'Location not detected'}</span>
+                      <Button type="button" variant="ghost" size="sm" className="ml-auto shrink-0 gap-1 text-xs" onClick={() => geo.detect()}>
+                        <LocateFixed className="h-3.5 w-3.5" /> Detect
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
               <div>
                 <Label>Notes</Label>
@@ -759,19 +809,19 @@ export default function Inventory() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Last Location</p>
-                  <p className="font-medium mt-1 flex items-center gap-1.5">
+                  <p className="font-medium mt-1 text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                     <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     {getBuildingName(currentItem.lastLocation)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Value</p>
-                  <p className="font-medium mt-1">{formatCost(currentItem.unitCost) || '$0.00'}</p>
+                  <p className="font-medium mt-1 text-gray-900 dark:text-gray-100">{formatCost(currentItem.unitCost) || '$0.00'}</p>
                 </div>
                 {currentItem.serialNumber && (
                   <div>
                     <p className="text-sm text-muted-foreground">Serial Number</p>
-                    <p className="font-medium mt-1 font-mono text-sm">{currentItem.serialNumber}</p>
+                    <p className="font-medium mt-1 text-gray-900 dark:text-gray-100 font-mono text-sm">{currentItem.serialNumber}</p>
                   </div>
                 )}
               </div>
@@ -780,7 +830,7 @@ export default function Inventory() {
               {currentItem.notes && (
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Notes</p>
-                  <div className="rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 p-3 text-sm">
+                  <div className="rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200/60 dark:border-white/10 p-3 text-sm text-gray-900 dark:text-gray-100">
                     {currentItem.notes}
                   </div>
                 </div>
@@ -796,7 +846,7 @@ export default function Inventory() {
                   <div className="flex items-center gap-3">
                     <Avatar name={currentItem.checkedOutTo} size="md" />
                     <div>
-                      <p className="font-medium">{currentItem.checkedOutTo}</p>
+                      <p className="font-medium text-gray-900 dark:text-gray-100">{currentItem.checkedOutTo}</p>
                     </div>
                   </div>
                 </div>
@@ -829,7 +879,7 @@ export default function Inventory() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
-                            <p className="text-sm">
+                            <p className="text-sm text-gray-900 dark:text-gray-100">
                               <span className="font-medium">{entry.personName || 'Unknown'}</span>
                               <span className="text-muted-foreground"> {isCheckout ? 'checked out' : 'checked in'}</span>
                             </p>
@@ -985,7 +1035,7 @@ export default function Inventory() {
                 </div>
                 <div className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-muted-foreground">Location</span>
-                  <span className="text-sm font-medium flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                     <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     {getBuildingName(qrModalItem.lastLocation)}
                   </span>

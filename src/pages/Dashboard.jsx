@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2,
@@ -24,7 +24,10 @@ import {
   fetchWorkOrders,
   fetchCompliance,
   fetchCheckoutHistory,
+  fetchBuildings,
+  fetchInventoryItems,
 } from '@/lib/dataService';
+const BuildingMap = lazy(() => import('@/components/dashboard/BuildingMap'));
 import { cn, formatDate, formatTimestamp, getStatusColor, getStatusLabel } from '@/lib/utils';
 
 export default function Dashboard() {
@@ -37,22 +40,28 @@ export default function Dashboard() {
   const [allWorkOrders, setAllWorkOrders] = useState([]);
   const [allCompliance, setAllCompliance] = useState([]);
   const [checkoutHistory, setCheckoutHistory] = useState([]);
+  const [buildings, setBuildings] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [ds, insp, wo, comp, chk] = await Promise.all([
+        const [ds, insp, wo, comp, chk, blds, inv] = await Promise.all([
           fetchDashboardStats(),
           fetchInspections(),
           fetchWorkOrders(),
           fetchCompliance(),
           fetchCheckoutHistory(),
+          fetchBuildings(),
+          fetchInventoryItems(),
         ]);
         setDashStats(ds);
         setAllInspections(insp);
         setAllWorkOrders(wo);
         setAllCompliance(comp);
         setCheckoutHistory(chk);
+        setBuildings(blds);
+        setInventoryItems(inv);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -223,98 +232,27 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Two-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Upcoming Inspections - wider */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Upcoming Inspections</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/inspections')}
-              className="gap-1"
-            >
-              View All <ArrowRight className="h-4 w-4" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {upcomingInspections.map((insp) => (
-                <div
-                  key={insp.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/inspections/${insp.id}`)}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
-                      <span className="text-[10px] font-semibold uppercase leading-none">
-                        {new Date(insp.scheduledDate).toLocaleDateString('en-US', { month: 'short' })}
-                      </span>
-                      <span className="text-lg font-bold leading-tight">
-                        {new Date(insp.scheduledDate).getDate()}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">
-                        {insp.buildings?.name || 'Unknown Building'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {insp.inspectionTemplates?.categoryName || insp.inspectionTemplates?.categoryCode || 'General'}
-                        {insp.assignedTo ? ` · ${insp.assignedTo}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={getStatusColor(insp.status)}>
-                      {getStatusLabel(insp.status)}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-              {upcomingInspections.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">
-                  No upcoming inspections scheduled
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Activity */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {activityFeed.map((entry) => {
-                const Icon = entry.icon;
-                return (
-                  <div key={entry.id} className="flex items-start gap-3">
-                    <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', entry.iconBg)}>
-                      <Icon className={cn('h-4 w-4', entry.iconColor)} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium leading-snug truncate">{entry.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{entry.detail}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                        <Calendar className="h-3 w-3 shrink-0" />
-                        {formatTimestamp(entry.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-              {activityFeed.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">No recent activity</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Building Map */}
+      <div className="rounded-xl bg-white dark:bg-white/5 dark:backdrop-blur-xl border border-gray-200/60 dark:border-white/10 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between p-6 pb-2">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Building Locations</h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/buildings')}
+            className="gap-1"
+          >
+            View All <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+        <div style={{ height: '400px', position: 'relative' }}>
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">Loading map...</div>}>
+            <BuildingMap buildings={buildings} inventoryItems={inventoryItems} />
+          </Suspense>
+        </div>
       </div>
 
-      {/* Bottom Row - three equal cards */}
+      {/* Three stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Inspections by Status */}
         <Card>
@@ -429,6 +367,95 @@ export default function Dashboard() {
                   <span className="font-medium">{complianceOverview[key]}</span>
                 </div>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bottom Row - Upcoming Inspections & Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg">Upcoming Inspections</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/inspections')}
+              className="gap-1"
+            >
+              View All <ArrowRight className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {upcomingInspections.map((insp) => (
+                <div
+                  key={insp.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/inspections/${insp.id}`)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
+                      <span className="text-[10px] font-semibold uppercase leading-none">
+                        {new Date(insp.scheduledDate).toLocaleDateString('en-US', { month: 'short' })}
+                      </span>
+                      <span className="text-lg font-bold leading-tight">
+                        {new Date(insp.scheduledDate).getDate()}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">
+                        {insp.buildings?.name || 'Unknown Building'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {insp.inspectionTemplates?.categoryName || insp.inspectionTemplates?.categoryCode || 'General'}
+                        {insp.assignedTo ? ` · ${insp.assignedTo}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={getStatusColor(insp.status)}>
+                      {getStatusLabel(insp.status)}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+              {upcomingInspections.length === 0 && (
+                <p className="text-center text-muted-foreground py-8">
+                  No upcoming inspections scheduled
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {activityFeed.map((entry) => {
+                const Icon = entry.icon;
+                return (
+                  <div key={entry.id} className="flex items-start gap-3">
+                    <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', entry.iconBg)}>
+                      <Icon className={cn('h-4 w-4', entry.iconColor)} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-snug truncate">{entry.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{entry.detail}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <Calendar className="h-3 w-3 shrink-0" />
+                        {formatTimestamp(entry.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {activityFeed.length === 0 && (
+                <p className="text-center text-muted-foreground py-4">No recent activity</p>
+              )}
             </div>
           </CardContent>
         </Card>

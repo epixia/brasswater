@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Environment files
+.env
+.env.local
+.env.production
+
+# Build output in root
+assets/
+favicon.svg
+icons.svg
+logo/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
